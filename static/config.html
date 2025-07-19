@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/x-icon" href="data:image/x-icon;," />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>配置管理</title>
+  <!-- 引入共享样式 -->
+  <link rel="stylesheet" href="/static/shared-styles.css" />
+  <script src="/static/shared.js"></script>
+</head>
+
+<body>
+  <h1>配置管理</h1>
+
+  <div class="container">
+    <div class="form-group">
+      <label>路径:</label>
+      <select id="path">
+        <option value="/">根路径 (/)</option>
+        <option value="/logs">日志页面 (/logs)</option>
+        <option value="/config">配置页面 (/config)</option>
+        <option value="/tokens">Token 管理页面 (/tokens)</option>
+        <option value="/proxies">代理管理页面 (/proxies)</option>
+        <option value="/static/shared-styles.css">
+          共享样式 (/static/shared-styles.css)
+        </option>
+        <option value="/static/shared.js">
+          共享脚本 (/static/shared.js)
+        </option>
+        <option value="/about">关于页面 (/about)</option>
+        <option value="/readme">ReadMe文档 (/readme)</option>
+        <option value="/api">api调用 (/api)</option>
+        <option value="/build-key">构建动态 Key (/build-key)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>内容类型:</label>
+      <select id="content_type">
+        <option value="default">默认</option>
+        <option value="not_found">404 页面</option>
+        <option value="redirect">重定向</option>
+        <option value="plain_text">纯文本</option>
+        <option value="html">HTML</option>
+        <option value="css">CSS</option>
+        <option value="js">JavaScript</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>内容:</label>
+      <textarea id="content"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>图片处理能力:</label>
+      <select id="vision_ability">
+        <option value="">保持不变</option>
+        <option value="none">禁用</option>
+        <option value="base64">仅 Base64</option>
+        <option value="all">Base64 + HTTP</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>慢速池:</label>
+      <select id="enable_slow_pool">
+        <option value="">保持不变</option>
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>长上下文:</label>
+      <select id="enable_long_context">
+        <option value="">保持不变</option>
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>使用量检查模型规则:</label>
+      <select id="usage_check_models_type">
+        <option value="">保持不变</option>
+        <option value="none">禁用</option>
+        <option value="default">默认</option>
+        <option value="all">所有</option>
+        <option value="list">自定义列表</option>
+      </select>
+      <input
+        type="text"
+        id="usage_check_models_list"
+        placeholder="模型列表，以逗号分隔"
+        style="display: none"
+      />
+    </div>
+
+    <div class="form-group">
+      <label>是否允许动态配置Key:</label>
+      <select id="enable_dynamic_key">
+        <option value="">保持不变</option>
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>包含网络引用:</label>
+      <select id="include_web_references">
+        <option value="">保持不变</option>
+        <option value="true">启用</option>
+        <option value="false">禁用</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>模型获取模式:</label>
+      <select id="fetch_raw_models">
+        <option value="">保持不变</option>
+        <option value="truncate">覆盖现有数据</option>
+        <option value="append:truncate">追加并部分覆盖</option>
+        <option value="append">仅追加新数据</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>共享令牌(空表示禁用):</label>
+      <input type="text" id="shareToken" />
+    </div>
+
+    <div class="form-group">
+      <label>认证令牌:</label>
+      <input type="password" id="authToken" />
+    </div>
+
+    <div class="button-group">
+      <button onclick="updateConfig('get')">获取配置</button>
+      <button onclick="updateConfig('update')">更新配置</button>
+      <button onclick="updateConfig('reset')" class="secondary">
+        重置配置
+      </button>
+    </div>
+  </div>
+
+  <div id="message"></div>
+
+  <script>
+    "use strict";
+
+    // 配置缓存对象
+    let configCache = {};
+
+    /**
+     * 比较当前配置与缓存配置，返回变更的配置项
+     * @returns {Object} 变更的配置对象
+     */
+    function getChangedConfig() {
+      const currentConfig = {
+        path: document.getElementById("path").value,
+        content: {
+          type: document.getElementById("content_type").value,
+          value: document.getElementById("content").value,
+        },
+        vision_ability: document.getElementById("vision_ability").value,
+        enable_slow_pool: parseBooleanFromString(
+          document.getElementById("enable_slow_pool").value,
+        ),
+        enable_long_context: parseBooleanFromString(
+          document.getElementById("enable_long_context").value,
+        ),
+        usage_check_models: {
+          type: document.getElementById("usage_check_models_type").value,
+          content: document.getElementById("usage_check_models_list").value,
+        },
+        enable_dynamic_key: parseBooleanFromString(
+          document.getElementById("enable_dynamic_key").value,
+        ),
+        include_web_references: parseBooleanFromString(
+          document.getElementById("include_web_references").value,
+        ),
+        fetch_raw_models: document.getElementById("fetch_raw_models").value,
+        share_token: document.getElementById("shareToken").value.trim(),
+      };
+
+      const changes = {
+        path: currentConfig.path,
+      };
+
+      // 比较内容配置
+      if (
+        currentConfig.content.type !== "default" &&
+        (configCache.content?.type !== currentConfig.content.type ||
+          configCache.content?.value !== currentConfig.content.value)
+      ) {
+        changes.content = currentConfig.content;
+      } else if (
+        currentConfig.content.type === "default" &&
+        configCache.content?.type !== "default"
+      ) {
+        changes.content = { type: "default", value: "" };
+      }
+
+      // 比较其他配置项
+      const simpleFields = [
+        "vision_ability",
+        "enable_slow_pool",
+        "enable_long_context",
+        "enable_dynamic_key",
+        "include_web_references",
+        "fetch_raw_models",
+        "share_token",
+      ];
+
+      simpleFields.forEach((field) => {
+        const value = currentConfig[field];
+        if (value !== null && value !== "" && value !== configCache[field]) {
+          changes[field] = value;
+        }
+      });
+
+      // 比较使用量检查模型配置
+      if (
+        currentConfig.usage_check_models.type &&
+        (configCache.usage_check_models?.type !==
+          currentConfig.usage_check_models.type ||
+          (currentConfig.usage_check_models.type === "list" &&
+            configCache.usage_check_models?.content !==
+              currentConfig.usage_check_models.content))
+      ) {
+        changes.usage_check_models = currentConfig.usage_check_models;
+      }
+
+      return changes;
+    }
+
+    /**
+     * 从服务器获取配置
+     */
+    async function fetchConfig() {
+      try {
+        const path = document.getElementById("path").value;
+        const requestData = {
+          action: "get",
+          path: path,
+        };
+
+        const response = await makeAuthenticatedRequest("/config", {
+          body: JSON.stringify(requestData),
+        });
+
+        if (response && response.data) {
+          const data = response.data;
+
+          // 更新内容配置
+          const contentType = data.content?.type || "default";
+          const contentValue = data.content?.value || "";
+
+          document.getElementById("content_type").value = contentType;
+          const contentTextarea = document.getElementById("content");
+
+          if (contentType === "default") {
+            // 如果是默认类型，尝试从路径获取内容
+            try {
+              const pathResponse = await fetch(path);
+              contentTextarea.value = await pathResponse.text();
+            } catch (err) {
+              console.error("获取默认内容失败:", err);
+              contentTextarea.value = "";
+            }
+            contentTextarea.disabled = true;
+          } else {
+            contentTextarea.value = contentValue;
+            contentTextarea.disabled = false;
+          }
+
+          // 更新其他配置项
+          document.getElementById("vision_ability").value =
+            data.vision_ability || "";
+          document.getElementById("enable_slow_pool").value =
+            parseStringFromBoolean(data.enable_slow_pool, "");
+          document.getElementById("enable_long_context").value =
+            parseStringFromBoolean(data.enable_long_context, "");
+          document.getElementById("enable_dynamic_key").value =
+            parseStringFromBoolean(data.enable_dynamic_key, "");
+          document.getElementById("include_web_references").value =
+            parseStringFromBoolean(data.include_web_references, "");
+          document.getElementById("fetch_raw_models").value =
+            data.fetch_raw_models || "";
+          document.getElementById("shareToken").value =
+            data.share_token || "";
+
+          // 处理使用量检查模型
+          const usageCheckType = data.usage_check_models?.type || "";
+          document.getElementById("usage_check_models_type").value =
+            usageCheckType;
+
+          const usageCheckList = document.getElementById(
+            "usage_check_models_list",
+          );
+          usageCheckList.value =
+            usageCheckType === "list"
+              ? data.usage_check_models?.content || ""
+              : "";
+          usageCheckList.style.display =
+            usageCheckType === "list" ? "inline-block" : "none";
+
+          // 更新缓存
+          configCache = { ...data };
+
+          showGlobalMessage(`成功获取 ${path} 的配置`, false);
+        }
+      } catch (error) {
+        showGlobalMessage(error.message || "获取配置失败", true);
+      }
+    }
+
+    /**
+     * 更新配置
+     * @param {string} action - 操作类型: 'get' | 'update' | 'reset'
+     */
+    async function updateConfig(action) {
+      try {
+        if (action === "get") {
+          await fetchConfig();
+          return;
+        }
+
+        if (action === "reset") {
+          const requestData = {
+            action: "reset",
+            path: document.getElementById("path").value,
+          };
+
+          const result = await makeAuthenticatedRequest("/config", {
+            body: JSON.stringify(requestData),
+          });
+
+          if (result) {
+            showGlobalMessage(result.message, false);
+            await fetchConfig();
+          }
+          return;
+        }
+
+        // 获取变更的配置
+        const changes = getChangedConfig();
+
+        // 检查是否有实际变更
+        if (Object.keys(changes).length <= 1) {
+          showGlobalMessage("没有配置发生变更", false);
+          return;
+        }
+
+        // 构建请求数据
+        const requestData = {
+          action: "update",
+          ...changes,
+        };
+
+        console.log("发送的配置数据:", requestData);
+
+        const result = await makeAuthenticatedRequest("/config", {
+          body: JSON.stringify(requestData),
+        });
+
+        if (result) {
+          showGlobalMessage(result.message, false);
+          await fetchConfig();
+        }
+      } catch (error) {
+        showGlobalMessage(error.message || "操作失败", true);
+      }
+    }
+
+    /**
+     * 处理内容类型变更
+     */
+    function handleContentTypeChange() {
+      const contentType = document.getElementById("content_type").value;
+      const textarea = document.getElementById("content");
+      const isEditable = contentType !== "default";
+
+      textarea.disabled = !isEditable;
+
+      if (contentType === "redirect") {
+        textarea.placeholder = "请输入重定向URL";
+      } else {
+        textarea.placeholder = "";
+      }
+    }
+
+    /**
+     * 处理使用量检查模型类型变更
+     */
+    function handleUsageCheckTypeChange() {
+      const type = document.getElementById("usage_check_models_type").value;
+      const listInput = document.getElementById("usage_check_models_list");
+      listInput.style.display = type === "list" ? "inline-block" : "none";
+    }
+
+    // 事件监听器
+    document.getElementById("path").addEventListener("change", fetchConfig);
+    document
+      .getElementById("content_type")
+      .addEventListener("change", handleContentTypeChange);
+    document
+      .getElementById("usage_check_models_type")
+      .addEventListener("change", handleUsageCheckTypeChange);
+
+    // 初始化
+    document.addEventListener("DOMContentLoaded", async () => {
+      // 初始化 token 处理
+      initializeTokenHandling("authToken");
+
+      // 加载初始配置
+      try {
+        await fetchConfig();
+        showGlobalMessage("页面加载完成", false);
+      } catch (error) {
+        showGlobalMessage("初始化配置加载失败", true);
+      }
+    });
+  </script>
+</body>
+</html>
