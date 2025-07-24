@@ -145,7 +145,7 @@ async function makeAuthenticatedRequest(url, options = {}) {
     return null;
   }
 
-  if (!/^[A-Za-z0-9\-._~+/]+=*$/.test(cleanToken)) {
+  if (!/^[A-Za-z0-9\-._~+/]+=*$/.test(token)) {
     showGlobalMessage("TOKEN格式无效，请检查是否包含特殊字符", true);
     return null;
   }
